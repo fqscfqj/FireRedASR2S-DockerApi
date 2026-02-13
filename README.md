@@ -40,14 +40,47 @@ docker-compose.yml
 其余变量都可以不配，按默认值运行。
 
 ### 高级可选变量（需要微调时再用）
-- `API_KEY_HEADER`：鉴权头名，默认 `X-API-Key`
-- `FIRERED_REPO_DIR`：FireRedASR2S 源码目录，默认 `/opt/FireRedASR2S`
-- `ASR_TYPE`：`aed` 或 `llm`，默认 `aed`
-- `HALF_FALLBACK_FP32` / `ASR_HALF_FALLBACK_FP32` / `LID_HALF_FALLBACK_FP32`：FP16 异常时自动降级到 FP32
-- `ASR_USE_HALF` / `VAD_USE_HALF` / `LID_USE_HALF` / `PUNC_USE_HALF`：按模型覆盖 `USE_HALF`
-- `PROCESS_ALL_FILTER_SCRIPT_MISMATCH` / `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：按 LID 过滤脚本不匹配文本
-- `ASR_REPEAT_FILTER_ENABLED`：重复 token/字符抑制与低信息文本过滤开关
-- `ASR_MAX_CONSECUTIVE_TOKEN_REPEATS` / `ASR_MAX_CONSECUTIVE_CHAR_REPEATS` / `ASR_LOW_INFO_MIN_CHARS` / `ASR_LOW_INFO_UNIQUE_RATIO`：重复文本抑制阈值
+- `API_KEY_HEADER`（默认 `X-API-Key`）：
+  - 用途：指定 API 鉴权使用的 HTTP 请求头名。常见场景为反向代理或云平台要求自定义 header。
+  - 建议：一般保持默认，只有在平台/网关要求时修改。
+
+- `FIRERED_REPO_DIR`（默认 `/opt/FireRedASR2S`）：
+  - 用途：本地 FireRedASR2S 源码的挂载/查找目录（`AUTO_CLONE_FIRERED` 为 true 时会在此处 clone）。
+  - 建议：开发时可挂载本地源码以便调试；容器部署可使用默认路径。
+
+- `ASR_TYPE`（默认 `aed`，可选 `llm`）：
+  - 用途：选择 ASR 解码器类型。`aed` = 本地 AED 解码器（低延迟、离线）；`llm` = 使用 LLM 解码（需要额外后端/模型，延迟/资源消耗更高）。
+  - 建议：默认使用 `aed`，仅在已配置 LLM 后端且需要 LLM 能力时切换为 `llm`。
+
+- `HALF_FALLBACK_FP32` / `ASR_HALF_FALLBACK_FP32` / `LID_HALF_FALLBACK_FP32`（默认开启）：
+  - 用途：当 FP16 推理出现数值错误（NaN/overflow）时自动回退到 FP32 并重试一次。
+  - 建议：保持启用以提高稳定性；若希望强制使用 FP32，可关闭半精度或将这些变量设置为 `false`。
+
+- `ASR_USE_HALF` / `VAD_USE_HALF` / `LID_USE_HALF` / `PUNC_USE_HALF`：
+  - 用途：为单个子模块覆盖 `USE_HALF`（启用半精度以节省显存）。
+  - 建议：显存充足时保持 `false`；显存紧张时可针对性开启，但可能出现数值不稳定（配合 fallback 使用）。
+
+- `PROCESS_ALL_FILTER_SCRIPT_MISMATCH`（默认 `true`） / `PROCESS_ALL_FILTER_MIN_CONFIDENCE`（默认 `0.80`）：
+  - 用途：在 `process_all` 流程中，若 LID 判断为英文且置信度 ≥ 阈值，则从识别结果中过滤中文字符（避免中英混写误识）。
+  - 建议：若 LID 不稳定或误杀中文，请降低阈值或关闭该功能。
+
+- `ASR_REPEAT_FILTER_ENABLED`（默认 `true`）：
+  - 用途：开启重复 token/字符压缩与“低信息文本”过滤（如大量重复词或无意义低信息输出会被丢弃）。
+
+- `ASR_MAX_CONSECUTIVE_TOKEN_REPEATS`（默认 `8`） / `ASR_MAX_CONSECUTIVE_CHAR_REPEATS`（默认 `6`）：
+  - 用途：允许的最大连续重复 token/字符数，超过则压缩丢弃。
+  - 建议：对口播/字幕类重复多的场景可适当增大；对噪声或电台直播可减小以去除冗余。
+
+- `ASR_LOW_INFO_MIN_CHARS`（默认 `24`） / `ASR_LOW_INFO_UNIQUE_RATIO`（默认 `0.16`）：
+  - 用途：判定“低信息文本”的阈值。只有当字符（或词）数 ≥ `ASR_LOW_INFO_MIN_CHARS` 时才计算 unique_ratio = unique_units / total_units；若 unique_ratio < `ASR_LOW_INFO_UNIQUE_RATIO` 则视为低信息并过滤掉。
+  - 调优参考：
+    - 保守/避免误杀：`ASR_LOW_INFO_UNIQUE_RATIO = 0.08 - 0.12` 或 增大 `ASR_LOW_INFO_MIN_CHARS`。
+    - 更严格过滤噪声/重复：`ASR_LOW_INFO_UNIQUE_RATIO = 0.20 - 0.30`。
+
+- 快速调优建议：
+  1. 先修改一个变量并观察日志/输出，再逐步调整。
+  2. 若出现“误杀短句/歌词/重复用语”，优先减小 `ASR_LOW_INFO_UNIQUE_RATIO` 或 增大 `ASR_LOW_INFO_MIN_CHARS`。
+  3. 若看到 FP16 数值异常（NaN/overflow），开启或保留 `*_HALF_FALLBACK_FP32`。
 
 ### 显存优化建议
 - 首选 `MODEL_DOWNLOAD_MODE=lazy` + `VRAM_TTL=300`（已默认开启）
