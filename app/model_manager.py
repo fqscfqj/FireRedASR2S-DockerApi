@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import inspect
 import logging
 import time
 from dataclasses import dataclass, field
@@ -219,11 +220,29 @@ class ModelManager:
             auto_clone=self.settings.auto_clone_firered,
         )
 
+    @staticmethod
+    def _build_model_config(config_cls: type[Any], **kwargs: Any) -> Any:
+        try:
+            sig = inspect.signature(config_cls)
+            allowed = {name for name in sig.parameters.keys() if name != "self"}
+            filtered = {k: v for k, v in kwargs.items() if k in allowed}
+            skipped = sorted(set(kwargs.keys()) - set(filtered.keys()))
+            if skipped:
+                logger.info(
+                    "Config %s does not support options %s, skipped",
+                    getattr(config_cls, "__name__", str(config_cls)),
+                    skipped,
+                )
+            return config_cls(**filtered)
+        except Exception:
+            return config_cls(**kwargs)
+
     def _load_asr(self) -> Any:
         self._prepare_imports()
         from fireredasr2s.fireredasr2 import FireRedAsr2, FireRedAsr2Config
 
-        config = FireRedAsr2Config(
+        config = self._build_model_config(
+            FireRedAsr2Config,
             use_gpu=self.cuda_available,
             use_half=self.settings.asr_use_half,
             beam_size=self.settings.asr_beam_size,
@@ -240,7 +259,11 @@ class ModelManager:
         self._prepare_imports()
         from fireredasr2s.fireredvad import FireRedVad, FireRedVadConfig
 
-        config = FireRedVadConfig(use_gpu=self.cuda_available)
+        config = self._build_model_config(
+            FireRedVadConfig,
+            use_gpu=self.cuda_available,
+            use_half=self.settings.vad_use_half,
+        )
         model_dir = self._meta["vad"].local_dir / "VAD"
         return FireRedVad.from_pretrained(str(model_dir), config=config)
 
@@ -248,7 +271,11 @@ class ModelManager:
         self._prepare_imports()
         from fireredasr2s.fireredlid import FireRedLid, FireRedLidConfig
 
-        config = FireRedLidConfig(use_gpu=self.cuda_available)
+        config = self._build_model_config(
+            FireRedLidConfig,
+            use_gpu=self.cuda_available,
+            use_half=self.settings.lid_use_half,
+        )
         model_dir = self._meta["lid"].local_dir
         return FireRedLid.from_pretrained(str(model_dir), config=config)
 
@@ -256,6 +283,10 @@ class ModelManager:
         self._prepare_imports()
         from fireredasr2s.fireredpunc import FireRedPunc, FireRedPuncConfig
 
-        config = FireRedPuncConfig(use_gpu=self.cuda_available)
+        config = self._build_model_config(
+            FireRedPuncConfig,
+            use_gpu=self.cuda_available,
+            use_half=self.settings.punc_use_half,
+        )
         model_dir = self._meta["punc"].local_dir
         return FireRedPunc.from_pretrained(str(model_dir), config=config)

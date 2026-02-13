@@ -75,6 +75,14 @@ async def _startup() -> None:
         settings.vram_ttl,
         settings.model_download_mode,
     )
+    logger.info(
+        "Memory optimization: use_half(global=%s, asr=%s, vad=%s, lid=%s, punc=%s)",
+        settings.use_half,
+        settings.asr_use_half,
+        settings.vad_use_half,
+        settings.lid_use_half,
+        settings.punc_use_half,
+    )
     if settings.api_key_enabled:
         logger.info("API key auth enabled. header=%s", settings.api_key_header)
     else:
