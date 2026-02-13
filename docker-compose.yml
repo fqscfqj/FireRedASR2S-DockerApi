@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/your-org/fireredasr2s-api:latest
+    image: ghcr.io/fqscfqj/fireredasr2s-api:latest
     container_name: fireredasr2s-api
     restart: unless-stopped
     ports:
@@ -19,4 +19,10 @@ services:
       LOG_LEVEL: info
     volumes:
       - ./models:/models
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
