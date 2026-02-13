@@ -34,6 +34,8 @@ docker-compose.yml
 - `MODEL_DOWNLOAD_MODE`：`lazy` 或 `startup`，默认 `lazy`
 - `FIRERED_REPO_DIR`：FireRedASR2S 源码目录，默认 `/opt/FireRedASR2S`
 - `ASR_TYPE`：`aed` 或 `llm`，默认 `aed`
+- `PROCESS_ALL_FILTER_SCRIPT_MISMATCH`：`/v1/process_all`按LID过滤“语言脚本不匹配”字符（如英文段误识别汉字），默认 `true`
+- `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：启用上述过滤时的最小LID置信度，默认 `0.80`
 - `API_KEY`：启用鉴权的密钥，默认空（空=不鉴权）
 - `API_KEY_HEADER`：鉴权头名，默认 `X-API-Key`
 

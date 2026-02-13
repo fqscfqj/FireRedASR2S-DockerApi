@@ -13,8 +13,63 @@ from .model_manager import ModelManager
 
 
 class SpeechService:
+    _HAN_CHAR_PATTERN = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+    _SPACE_PATTERN = re.compile(r"\s+")
+
     def __init__(self, manager: ModelManager) -> None:
         self.manager = manager
+
+    @classmethod
+    def _normalize_text_spaces(cls, text: str) -> str:
+        return cls._SPACE_PATTERN.sub(" ", text).strip()
+
+    @classmethod
+    def _is_english_lid(cls, lang: str | None) -> bool:
+        lang_norm = (lang or "").strip().lower()
+        return lang_norm == "en" or lang_norm.startswith("en ")
+
+    def _should_filter_han_for_segment(self, lid_item: dict[str, Any] | None) -> bool:
+        if not self.manager.settings.process_all_filter_script_mismatch:
+            return False
+        if not lid_item:
+            return False
+        confidence = float(lid_item.get("confidence") or 0.0)
+        if confidence < self.manager.settings.process_all_filter_min_confidence:
+            return False
+        return self._is_english_lid(lid_item.get("lang"))
+
+    @classmethod
+    def _remove_han_chars(cls, text: str) -> str:
+        return cls._normalize_text_spaces(cls._HAN_CHAR_PATTERN.sub("", text))
+
+    def _sanitize_asr_item_by_lid(
+        self, asr_item: dict[str, Any], lid_item: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        if not self._should_filter_han_for_segment(lid_item):
+            return asr_item
+
+        sanitized = dict(asr_item)
+        timestamps = sanitized.get("timestamp") or []
+        if timestamps:
+            filtered_timestamps = []
+            for token, start_s, end_s in timestamps:
+                if self._HAN_CHAR_PATTERN.search(str(token)):
+                    continue
+                filtered_timestamps.append((token, start_s, end_s))
+            sanitized["timestamp"] = filtered_timestamps
+            sanitized["text"] = self._normalize_text_spaces(
+                " ".join(str(token) for token, _, _ in filtered_timestamps)
+            )
+            if sanitized["text"]:
+                return sanitized
+
+        sanitized["text"] = self._remove_han_chars(str(sanitized.get("text", "")))
+        return sanitized
+
+    def _sanitize_sentence_text_by_lid(self, text: str, lid_item: dict[str, Any] | None) -> str:
+        if not self._should_filter_han_for_segment(lid_item):
+            return text
+        return self._remove_han_chars(text)
 
     async def asr_only(self, wav_path: Path, force_refresh: bool = False) -> dict[str, Any]:
         if force_refresh:
@@ -143,7 +198,10 @@ class SpeechService:
             for asr_item, lid_item in zip(batch_asr, batch_lid):
                 if re.search(r"(<blank>)|(<sil>)", asr_item.get("text", "")):
                     continue
-                asr_results.append(asr_item)
+                sanitized_asr_item = self._sanitize_asr_item_by_lid(asr_item, lid_item)
+                if not sanitized_asr_item.get("text") and not sanitized_asr_item.get("timestamp"):
+                    continue
+                asr_results.append(sanitized_asr_item)
                 lid_results.append(lid_item)
 
         punc_results: list[dict[str, Any]] = []
@@ -180,22 +238,32 @@ class SpeechService:
                         start = start_ms
                     if i == len(punc_sentences) - 1:
                         end = end_ms
+                    sentence_text = self._sanitize_sentence_text_by_lid(
+                        sent["punc_text"], lid_item
+                    )
+                    if not sentence_text:
+                        continue
                     sentences.append(
                         {
                             "start_ms": start,
                             "end_ms": end,
-                            "text": sent["punc_text"],
+                            "text": sentence_text,
                             "asr_confidence": asr_item["confidence"],
                             "lang": lid_item.get("lang"),
                             "lang_confidence": lid_item.get("confidence", 0.0),
                         }
                     )
             else:
+                sentence_text = self._sanitize_sentence_text_by_lid(
+                    punc_item.get("punc_text", asr_item.get("text", "")), lid_item
+                )
+                if not sentence_text:
+                    continue
                 sentences.append(
                     {
                         "start_ms": start_ms,
                         "end_ms": end_ms,
-                        "text": punc_item.get("punc_text", asr_item.get("text", "")),
+                        "text": sentence_text,
                         "asr_confidence": asr_item["confidence"],
                         "lang": lid_item.get("lang"),
                         "lang_confidence": lid_item.get("confidence", 0.0),

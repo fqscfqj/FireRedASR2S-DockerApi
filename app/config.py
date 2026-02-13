@@ -25,6 +25,12 @@ class Settings:
     asr_beam_size: int = int(os.getenv("ASR_BEAM_SIZE", "3"))
     asr_batch_size: int = int(os.getenv("ASR_BATCH_SIZE", "1"))
     punc_batch_size: int = int(os.getenv("PUNC_BATCH_SIZE", "1"))
+    process_all_filter_script_mismatch: bool = _as_bool(
+        os.getenv("PROCESS_ALL_FILTER_SCRIPT_MISMATCH"), default=True
+    )
+    process_all_filter_min_confidence: float = float(
+        os.getenv("PROCESS_ALL_FILTER_MIN_CONFIDENCE", "0.80")
+    )
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "8000"))
     log_level: str = os.getenv("LOG_LEVEL", "info")
