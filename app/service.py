@@ -17,6 +17,7 @@ class SpeechService:
     _SPACE_PATTERN = re.compile(r"\s+")
     _NON_SPEECH_TOKEN_PATTERN = re.compile(r"<\s*(?:blank|sil)\s*>", re.IGNORECASE)
     _LEXICAL_CONTENT_PATTERN = re.compile(r"[A-Za-z0-9\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
+    _LEXICAL_UNIT_PATTERN = re.compile(r"[A-Za-z0-9\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 
     def __init__(self, manager: ModelManager) -> None:
         self.manager = manager
@@ -61,6 +62,74 @@ class SpeechService:
     def _remove_han_chars(cls, text: str) -> str:
         return cls._normalize_text_spaces(cls._HAN_CHAR_PATTERN.sub("", text))
 
+    def _filter_repeated_timestamps(
+        self, timestamps: list[tuple[str, float, float]]
+    ) -> list[tuple[str, float, float]]:
+        if not self.manager.settings.asr_repeat_filter_enabled:
+            return timestamps
+
+        max_repeat = max(1, self.manager.settings.asr_max_consecutive_token_repeats)
+        filtered: list[tuple[str, float, float]] = []
+        prev_token = ""
+        repeat_count = 0
+        for token, start_s, end_s in timestamps:
+            token_norm = self._normalize_text_spaces(str(token))
+            if not token_norm:
+                continue
+            if token_norm == prev_token:
+                repeat_count += 1
+            else:
+                prev_token = token_norm
+                repeat_count = 1
+            if repeat_count > max_repeat:
+                continue
+            filtered.append((token_norm, start_s, end_s))
+        return filtered
+
+    def _compress_repeated_chars(self, text: str) -> str:
+        if not self.manager.settings.asr_repeat_filter_enabled:
+            return text
+
+        max_repeat = max(1, self.manager.settings.asr_max_consecutive_char_repeats)
+        result_chars: list[str] = []
+        prev_char = ""
+        repeat_count = 0
+
+        for ch in text:
+            if ch == prev_char:
+                repeat_count += 1
+            else:
+                prev_char = ch
+                repeat_count = 1
+            if repeat_count > max_repeat:
+                continue
+            result_chars.append(ch)
+
+        return "".join(result_chars)
+
+    def _is_low_information_text(self, text: str) -> bool:
+        if not self.manager.settings.asr_repeat_filter_enabled:
+            return False
+
+        lexical_units = self._LEXICAL_UNIT_PATTERN.findall(text)
+        total = len(lexical_units)
+        if total < max(1, self.manager.settings.asr_low_info_min_chars):
+            return False
+
+        unique_ratio = len(set(lexical_units)) / total
+        return unique_ratio < max(0.0, self.manager.settings.asr_low_info_unique_ratio)
+
+    def _post_process_recognized_text(self, text: str) -> str:
+        cleaned = self._clean_recognized_text(text)
+        if not cleaned:
+            return ""
+        cleaned = self._normalize_text_spaces(self._compress_repeated_chars(cleaned))
+        if not cleaned:
+            return ""
+        if self._is_low_information_text(cleaned):
+            return ""
+        return cleaned
+
     def _sanitize_asr_item_by_lid(
         self, asr_item: dict[str, Any], lid_item: dict[str, Any] | None
     ) -> dict[str, Any]:
@@ -77,8 +146,9 @@ class SpeechService:
                 if need_filter_han and self._HAN_CHAR_PATTERN.search(token_str):
                     continue
                 filtered_timestamps.append((token_str, start_s, end_s))
+            filtered_timestamps = self._filter_repeated_timestamps(filtered_timestamps)
             sanitized["timestamp"] = filtered_timestamps
-            sanitized["text"] = self._clean_recognized_text(
+            sanitized["text"] = self._post_process_recognized_text(
                 " ".join(token for token, _, _ in filtered_timestamps)
             )
             if sanitized["text"]:
@@ -87,13 +157,13 @@ class SpeechService:
         base_text = str(sanitized.get("text", ""))
         if need_filter_han:
             base_text = self._remove_han_chars(base_text)
-        sanitized["text"] = self._clean_recognized_text(base_text)
+        sanitized["text"] = self._post_process_recognized_text(base_text)
         return sanitized
 
     def _sanitize_sentence_text_by_lid(self, text: str, lid_item: dict[str, Any] | None) -> str:
         if self._should_filter_han_for_segment(lid_item):
             text = self._remove_han_chars(text)
-        return self._clean_recognized_text(text)
+        return self._post_process_recognized_text(text)
 
     async def asr_only(self, wav_path: Path, force_refresh: bool = False) -> dict[str, Any]:
         if force_refresh:
@@ -115,16 +185,17 @@ class SpeechService:
             }
 
         result = raw_results[0]
+        sanitized_result = self._sanitize_asr_item_by_lid(result, None)
         timestamps = []
-        for item in result.get("timestamp", []):
+        for item in sanitized_result.get("timestamp", []):
             token, start_s, end_s = item
             timestamps.append({"token": token, "start_s": start_s, "end_s": end_s})
 
         return {
-            "uttid": result.get("uttid", uttid),
-            "text": result.get("text", ""),
-            "confidence": result.get("confidence"),
-            "dur_s": result.get("dur_s"),
+            "uttid": sanitized_result.get("uttid", uttid),
+            "text": sanitized_result.get("text", ""),
+            "confidence": sanitized_result.get("confidence"),
+            "dur_s": sanitized_result.get("dur_s"),
             "timestamps": timestamps,
         }
 
@@ -172,8 +243,8 @@ class SpeechService:
             return {"origin_text": text, "punc_text": text}
         result = results[0]
         return {
-            "origin_text": self._clean_recognized_text(result.get("origin_text", text)),
-            "punc_text": self._clean_recognized_text(result.get("punc_text", text)),
+            "origin_text": self._post_process_recognized_text(result.get("origin_text", text)),
+            "punc_text": self._post_process_recognized_text(result.get("punc_text", text)),
         }
 
     async def process_all(self, wav_path: Path, force_refresh: bool = False) -> dict[str, Any]:

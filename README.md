@@ -44,6 +44,11 @@ docker-compose.yml
 - `PUNC_USE_HALF`：Punc 半精度开关，默认继承 `USE_HALF`
 - `PROCESS_ALL_FILTER_SCRIPT_MISMATCH`：`/v1/process_all`按LID过滤“语言脚本不匹配”字符（如英文段误识别汉字），默认 `true`
 - `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：启用上述过滤时的最小LID置信度，默认 `0.80`
+- `ASR_REPEAT_FILTER_ENABLED`：是否启用重复 token/字符抑制与低信息文本过滤，默认 `true`
+- `ASR_MAX_CONSECUTIVE_TOKEN_REPEATS`：同一 token 连续保留上限，默认 `8`
+- `ASR_MAX_CONSECUTIVE_CHAR_REPEATS`：同一字符连续保留上限，默认 `6`
+- `ASR_LOW_INFO_MIN_CHARS`：触发低信息过滤的最小词元数阈值，默认 `24`
+- `ASR_LOW_INFO_UNIQUE_RATIO`：低信息文本最小唯一词元占比阈值（低于该值则丢弃），默认 `0.16`
 - `API_KEY`：启用鉴权的密钥，默认空（空=不鉴权）
 - `API_KEY_HEADER`：鉴权头名，默认 `X-API-Key`
 

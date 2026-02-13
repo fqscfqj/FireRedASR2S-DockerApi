@@ -43,6 +43,17 @@ class Settings:
     process_all_filter_min_confidence: float = float(
         os.getenv("PROCESS_ALL_FILTER_MIN_CONFIDENCE", "0.80")
     )
+    asr_repeat_filter_enabled: bool = _as_bool(
+        os.getenv("ASR_REPEAT_FILTER_ENABLED"), default=True
+    )
+    asr_max_consecutive_token_repeats: int = int(
+        os.getenv("ASR_MAX_CONSECUTIVE_TOKEN_REPEATS", "8")
+    )
+    asr_max_consecutive_char_repeats: int = int(
+        os.getenv("ASR_MAX_CONSECUTIVE_CHAR_REPEATS", "6")
+    )
+    asr_low_info_min_chars: int = int(os.getenv("ASR_LOW_INFO_MIN_CHARS", "24"))
+    asr_low_info_unique_ratio: float = float(os.getenv("ASR_LOW_INFO_UNIQUE_RATIO", "0.16"))
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "8000"))
     log_level: str = os.getenv("LOG_LEVEL", "info")
