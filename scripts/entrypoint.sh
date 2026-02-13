@@ -8,11 +8,16 @@ set -euo pipefail
 : "${PORT:=8000}"
 : "${LOG_LEVEL:=info}"
 
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
 mkdir -p "${MODEL_PATH}"
 
 if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
-exec uvicorn app.main:app --host "${HOST}" --port "${PORT}" --log-level "${LOG_LEVEL}"
+exec uvicorn app.main:app --host "${HOST}" --port "${PORT}" --workers 1 --log-level "${LOG_LEVEL}"
 

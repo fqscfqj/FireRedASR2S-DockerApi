@@ -52,6 +52,7 @@ docker-compose.yml
 ### 显存优化建议
 - 首选 `MODEL_DOWNLOAD_MODE=lazy` + `VRAM_TTL=300`（已默认开启）
 - GPU 显存紧张时，设置 `USE_HALF=true`；如需细粒度控制，再单独设置 `*_USE_HALF`
+- 服务已固定为单进程 + 单线程运行（Uvicorn worker=1，Torch/AnyIO/BLAS 线程=1），避免并发导致显存额外占用
 - 若 FP16 触发数值/断言异常，服务会按模型自动切换到 FP32 并重试一次（ASR/LID），避免接口因半精度不稳定而失败
 - 某些上游模型配置类可能不支持 `use_half` 参数，服务会自动跳过该参数并继续加载
 

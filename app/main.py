@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 
 import anyio
+import torch
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 
 from .audio import normalize_audio_to_pcm16k_mono
@@ -43,6 +44,16 @@ service = SpeechService(manager)
 upload_tmp_dir = Path("/tmp/firered-api-upload")
 
 
+def _configure_runtime_threads() -> None:
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    limiter.total_tokens = 1
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        logger.debug("torch interop threads already initialized; keep existing value")
+
+
 async def verify_api_key(request: Request) -> None:
     if not settings.api_key_enabled:
         return
@@ -68,12 +79,16 @@ async def handle_audio_upload(file: UploadFile, callback):
 
 @app.on_event("startup")
 async def _startup() -> None:
+    _configure_runtime_threads()
     await manager.start()
     logger.info(
         "Service started. model_path=%s, vram_ttl=%ss, download_mode=%s",
         settings.model_path,
         settings.vram_ttl,
         settings.model_download_mode,
+    )
+    logger.info(
+        "Runtime limits: cpu_threads=1, interop_threads=1, anyio_thread_tokens=1",
     )
     logger.info(
         "Memory optimization: use_half(global=%s, asr=%s, vad=%s, lid=%s, punc=%s)",
