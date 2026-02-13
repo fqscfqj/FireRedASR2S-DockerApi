@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  firered-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/your-org/fireredasr2s-api:latest
+    container_name: fireredasr2s-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_PATH: /models
+      VRAM_TTL: 300
+      MODEL_DOWNLOAD_MODE: lazy
+      API_KEY: change_me_strong_key
+      API_KEY_HEADER: X-API-Key
+      LOG_LEVEL: info
+    volumes:
+      - ./models:/models
+    gpus: all
