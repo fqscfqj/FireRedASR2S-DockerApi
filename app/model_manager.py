@@ -321,7 +321,7 @@ class ModelManager:
             use_gpu=self.cuda_available,
             use_half=use_half,
             beam_size=self.settings.asr_beam_size,
-            return_timestamp=True,
+            return_timestamp=self.settings.asr_return_timestamp,
         )
         meta = self._meta["asr"]
         return FireRedAsr2.from_pretrained(

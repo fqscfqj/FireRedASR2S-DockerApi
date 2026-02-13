@@ -15,6 +15,8 @@ from .model_manager import ModelManager
 class SpeechService:
     _HAN_CHAR_PATTERN = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
     _SPACE_PATTERN = re.compile(r"\s+")
+    _NON_SPEECH_TOKEN_PATTERN = re.compile(r"<\s*(?:blank|sil)\s*>", re.IGNORECASE)
+    _LEXICAL_CONTENT_PATTERN = re.compile(r"[A-Za-z0-9\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]")
 
     def __init__(self, manager: ModelManager) -> None:
         self.manager = manager
@@ -22,6 +24,23 @@ class SpeechService:
     @classmethod
     def _normalize_text_spaces(cls, text: str) -> str:
         return cls._SPACE_PATTERN.sub(" ", text).strip()
+
+    @classmethod
+    def _is_non_speech_token(cls, token: str) -> bool:
+        return bool(cls._NON_SPEECH_TOKEN_PATTERN.fullmatch((token or "").strip()))
+
+    @classmethod
+    def _strip_non_speech_tokens(cls, text: str) -> str:
+        return cls._NON_SPEECH_TOKEN_PATTERN.sub(" ", text)
+
+    @classmethod
+    def _clean_recognized_text(cls, text: str) -> str:
+        cleaned = cls._normalize_text_spaces(cls._strip_non_speech_tokens(text or ""))
+        if not cleaned:
+            return ""
+        if not cls._LEXICAL_CONTENT_PATTERN.search(cleaned):
+            return ""
+        return cleaned
 
     @classmethod
     def _is_english_lid(cls, lang: str | None) -> bool:
@@ -45,31 +64,36 @@ class SpeechService:
     def _sanitize_asr_item_by_lid(
         self, asr_item: dict[str, Any], lid_item: dict[str, Any] | None
     ) -> dict[str, Any]:
-        if not self._should_filter_han_for_segment(lid_item):
-            return asr_item
-
         sanitized = dict(asr_item)
+        need_filter_han = self._should_filter_han_for_segment(lid_item)
+
         timestamps = sanitized.get("timestamp") or []
         if timestamps:
             filtered_timestamps = []
             for token, start_s, end_s in timestamps:
-                if self._HAN_CHAR_PATTERN.search(str(token)):
+                token_str = str(token)
+                if self._is_non_speech_token(token_str):
                     continue
-                filtered_timestamps.append((token, start_s, end_s))
+                if need_filter_han and self._HAN_CHAR_PATTERN.search(token_str):
+                    continue
+                filtered_timestamps.append((token_str, start_s, end_s))
             sanitized["timestamp"] = filtered_timestamps
-            sanitized["text"] = self._normalize_text_spaces(
-                " ".join(str(token) for token, _, _ in filtered_timestamps)
+            sanitized["text"] = self._clean_recognized_text(
+                " ".join(token for token, _, _ in filtered_timestamps)
             )
             if sanitized["text"]:
                 return sanitized
 
-        sanitized["text"] = self._remove_han_chars(str(sanitized.get("text", "")))
+        base_text = str(sanitized.get("text", ""))
+        if need_filter_han:
+            base_text = self._remove_han_chars(base_text)
+        sanitized["text"] = self._clean_recognized_text(base_text)
         return sanitized
 
     def _sanitize_sentence_text_by_lid(self, text: str, lid_item: dict[str, Any] | None) -> str:
-        if not self._should_filter_han_for_segment(lid_item):
-            return text
-        return self._remove_han_chars(text)
+        if self._should_filter_han_for_segment(lid_item):
+            text = self._remove_han_chars(text)
+        return self._clean_recognized_text(text)
 
     async def asr_only(self, wav_path: Path, force_refresh: bool = False) -> dict[str, Any]:
         if force_refresh:
@@ -137,7 +161,7 @@ class SpeechService:
     async def punc_only(self, text: str, force_refresh: bool = False) -> dict[str, Any]:
         if force_refresh:
             await self.manager.refresh(["punc"])
-        text = text.strip()
+        text = self._clean_recognized_text(text.strip())
         if not text:
             return {"origin_text": "", "punc_text": ""}
         results = await self.manager.run_with_model(
@@ -148,8 +172,8 @@ class SpeechService:
             return {"origin_text": text, "punc_text": text}
         result = results[0]
         return {
-            "origin_text": result.get("origin_text", text),
-            "punc_text": result.get("punc_text", text),
+            "origin_text": self._clean_recognized_text(result.get("origin_text", text)),
+            "punc_text": self._clean_recognized_text(result.get("punc_text", text)),
         }
 
     async def process_all(self, wav_path: Path, force_refresh: bool = False) -> dict[str, Any]:
@@ -196,8 +220,6 @@ class SpeechService:
             )
 
             for asr_item, lid_item in zip(batch_asr, batch_lid):
-                if re.search(r"(<blank>)|(<sil>)", asr_item.get("text", "")):
-                    continue
                 sanitized_asr_item = self._sanitize_asr_item_by_lid(asr_item, lid_item)
                 if not sanitized_asr_item.get("text") and not sanitized_asr_item.get("timestamp"):
                     continue
@@ -238,9 +260,7 @@ class SpeechService:
                         start = start_ms
                     if i == len(punc_sentences) - 1:
                         end = end_ms
-                    sentence_text = self._sanitize_sentence_text_by_lid(
-                        sent["punc_text"], lid_item
-                    )
+                    sentence_text = self._sanitize_sentence_text_by_lid(sent["punc_text"], lid_item)
                     if not sentence_text:
                         continue
                     sentences.append(

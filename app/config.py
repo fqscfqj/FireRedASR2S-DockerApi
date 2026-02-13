@@ -34,6 +34,7 @@ class Settings:
     )
     punc_use_half: bool = _as_bool(os.getenv("PUNC_USE_HALF", os.getenv("USE_HALF")), default=False)
     asr_beam_size: int = int(os.getenv("ASR_BEAM_SIZE", "3"))
+    asr_return_timestamp: bool = _as_bool(os.getenv("ASR_RETURN_TIMESTAMP"), default=False)
     asr_batch_size: int = int(os.getenv("ASR_BATCH_SIZE", "1"))
     punc_batch_size: int = int(os.getenv("PUNC_BATCH_SIZE", "1"))
     process_all_filter_script_mismatch: bool = _as_bool(
