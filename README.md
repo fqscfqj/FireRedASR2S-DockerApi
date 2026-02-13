@@ -28,29 +28,26 @@ docker-compose.yml
 .github/workflows/build-image.yml
 ```
 
-## 核心环境变量
+## 环境变量（精简版）
+日常部署只建议设置以下 6 个：
+- `API_KEY`：鉴权密钥（生产环境建议必填）
 - `MODEL_PATH`：模型目录，默认 `/models`
-- `VRAM_TTL`：模型空闲显存回收时间（秒），默认 `300`
 - `MODEL_DOWNLOAD_MODE`：`lazy` 或 `startup`，默认 `lazy`
+- `VRAM_TTL`：模型空闲显存回收时间（秒），默认 `300`
+- `USE_HALF`：是否启用半精度（显存紧张时设为 `true`）
+- `LOG_LEVEL`：日志级别，默认 `info`
+
+其余变量都可以不配，按默认值运行。
+
+### 高级可选变量（需要微调时再用）
+- `API_KEY_HEADER`：鉴权头名，默认 `X-API-Key`
 - `FIRERED_REPO_DIR`：FireRedASR2S 源码目录，默认 `/opt/FireRedASR2S`
 - `ASR_TYPE`：`aed` 或 `llm`，默认 `aed`
-- `USE_HALF`：全局半精度开关（FP16），默认 `false`
-- `HALF_FALLBACK_FP32`：全局 FP16 异常自动降级到 FP32 的开关，默认 `true`
-- `ASR_USE_HALF`：ASR 半精度开关，默认继承 `USE_HALF`
-- `ASR_HALF_FALLBACK_FP32`：ASR 在 FP16 推理异常时，自动降级到 FP32 并重试一次，默认继承 `HALF_FALLBACK_FP32`
-- `VAD_USE_HALF`：VAD 半精度开关，默认继承 `USE_HALF`
-- `LID_USE_HALF`：LID 半精度开关，默认继承 `USE_HALF`
-- `LID_HALF_FALLBACK_FP32`：LID 在 FP16 推理触发上游断言时，自动降级到 FP32 并重试一次，默认继承 `HALF_FALLBACK_FP32`
-- `PUNC_USE_HALF`：Punc 半精度开关，默认继承 `USE_HALF`
-- `PROCESS_ALL_FILTER_SCRIPT_MISMATCH`：`/v1/process_all`按LID过滤“语言脚本不匹配”字符（如英文段误识别汉字），默认 `true`
-- `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：启用上述过滤时的最小LID置信度，默认 `0.80`
-- `ASR_REPEAT_FILTER_ENABLED`：是否启用重复 token/字符抑制与低信息文本过滤，默认 `true`
-- `ASR_MAX_CONSECUTIVE_TOKEN_REPEATS`：同一 token 连续保留上限，默认 `8`
-- `ASR_MAX_CONSECUTIVE_CHAR_REPEATS`：同一字符连续保留上限，默认 `6`
-- `ASR_LOW_INFO_MIN_CHARS`：触发低信息过滤的最小词元数阈值，默认 `24`
-- `ASR_LOW_INFO_UNIQUE_RATIO`：低信息文本最小唯一词元占比阈值（低于该值则丢弃），默认 `0.16`
-- `API_KEY`：启用鉴权的密钥，默认空（空=不鉴权）
-- `API_KEY_HEADER`：鉴权头名，默认 `X-API-Key`
+- `HALF_FALLBACK_FP32` / `ASR_HALF_FALLBACK_FP32` / `LID_HALF_FALLBACK_FP32`：FP16 异常时自动降级到 FP32
+- `ASR_USE_HALF` / `VAD_USE_HALF` / `LID_USE_HALF` / `PUNC_USE_HALF`：按模型覆盖 `USE_HALF`
+- `PROCESS_ALL_FILTER_SCRIPT_MISMATCH` / `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：按 LID 过滤脚本不匹配文本
+- `ASR_REPEAT_FILTER_ENABLED`：重复 token/字符抑制与低信息文本过滤开关
+- `ASR_MAX_CONSECUTIVE_TOKEN_REPEATS` / `ASR_MAX_CONSECUTIVE_CHAR_REPEATS` / `ASR_LOW_INFO_MIN_CHARS` / `ASR_LOW_INFO_UNIQUE_RATIO`：重复文本抑制阈值
 
 ### 显存优化建议
 - 首选 `MODEL_DOWNLOAD_MODE=lazy` + `VRAM_TTL=300`（已默认开启）

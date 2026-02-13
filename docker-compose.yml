@@ -15,14 +15,6 @@ services:
       VRAM_TTL: 300
       MODEL_DOWNLOAD_MODE: lazy
       USE_HALF: "false"
-      HALF_FALLBACK_FP32: "true"
-      ASR_HALF_FALLBACK_FP32: "true"
-      LID_HALF_FALLBACK_FP32: "true"
-      ASR_REPEAT_FILTER_ENABLED: "true"
-      ASR_MAX_CONSECUTIVE_TOKEN_REPEATS: "8"
-      ASR_MAX_CONSECUTIVE_CHAR_REPEATS: "6"
-      ASR_LOW_INFO_MIN_CHARS: "24"
-      ASR_LOW_INFO_UNIQUE_RATIO: "0.16"
       API_KEY: change_me_strong_key
       API_KEY_HEADER: X-API-Key
       LOG_LEVEL: info
