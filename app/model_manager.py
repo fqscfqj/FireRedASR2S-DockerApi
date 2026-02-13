@@ -5,6 +5,7 @@ import gc
 import inspect
 import logging
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -44,6 +45,7 @@ class ModelManager:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.cuda_available = torch.cuda.is_available()
+        self._force_fp32_models: set[str] = set()
         self._stop_event = asyncio.Event()
         self._cleanup_task: asyncio.Task[Any] | None = None
         self._cleanup_interval = max(10, min(60, settings.vram_ttl // 3 if settings.vram_ttl > 0 else 10))
@@ -107,9 +109,80 @@ class ModelManager:
                 logger.info("Loading model %s", model_name)
                 slot.instance = await anyio.to_thread.run_sync(slot.loader)
             slot.last_used = time.monotonic()
-            result = await anyio.to_thread.run_sync(lambda: runner(slot.instance))
+            try:
+                result = await anyio.to_thread.run_sync(lambda: runner(slot.instance))
+            except Exception as exc:
+                if not self._should_retry_with_fp32(model_name, exc):
+                    raise
+                logger.warning(
+                    "%s inference failed under fp16 (%s); fallback to fp32 and retry once",
+                    model_name,
+                    type(exc).__name__,
+                )
+                self._force_fp32_models.add(model_name)
+                self._unload_locked(slot)
+                await self.ensure_model_downloaded(model_name)
+                logger.info("Reloading model %s with fp32 fallback", model_name)
+                slot.instance = await anyio.to_thread.run_sync(slot.loader)
+                result = await anyio.to_thread.run_sync(lambda: runner(slot.instance))
             slot.last_used = time.monotonic()
             return result
+
+    def _should_retry_with_fp32(self, model_name: str, exc: Exception) -> bool:
+        if model_name not in {"asr", "lid"}:
+            return False
+        if model_name in self._force_fp32_models:
+            return False
+        if not self.cuda_available:
+            return False
+        if not self._half_fallback_enabled(model_name):
+            return False
+        if not self._half_enabled_for_model(model_name):
+            return False
+        return self._is_probable_fp16_numerical_issue(model_name, exc)
+
+    def _half_enabled_for_model(self, model_name: str) -> bool:
+        return {
+            "asr": self.settings.asr_use_half,
+            "lid": self.settings.lid_use_half,
+        }.get(model_name, False)
+
+    def _half_fallback_enabled(self, model_name: str) -> bool:
+        return (
+            self.settings.half_fallback_fp32
+            and {
+                "asr": self.settings.asr_half_fallback_fp32,
+                "lid": self.settings.lid_half_fallback_fp32,
+            }.get(model_name, False)
+        )
+
+    @staticmethod
+    def _is_probable_fp16_numerical_issue(model_name: str, exc: Exception) -> bool:
+        if isinstance(exc, AssertionError):
+            frames = traceback.extract_tb(exc.__traceback__)
+            frame_paths = [frame.filename.lower() for frame in frames]
+            if model_name == "lid":
+                return any(
+                    "fireredlid" in path and "transformer_decoder.py" in path
+                    for path in frame_paths
+                )
+            return True
+
+        if not isinstance(exc, RuntimeError):
+            return False
+
+        msg = str(exc).lower()
+        numerical_markers = (
+            "nan",
+            "inf",
+            "overflow",
+            "underflow",
+            "cublas",
+            "cudnn",
+            "device-side assert",
+            "cuda error",
+        )
+        return any(marker in msg for marker in numerical_markers)
 
     async def refresh(self, model_names: list[str]) -> None:
         for model_name in model_names:
@@ -241,10 +314,12 @@ class ModelManager:
         self._prepare_imports()
         from fireredasr2s.fireredasr2 import FireRedAsr2, FireRedAsr2Config
 
+        use_half = self.settings.asr_use_half and "asr" not in self._force_fp32_models
+
         config = self._build_model_config(
             FireRedAsr2Config,
             use_gpu=self.cuda_available,
-            use_half=self.settings.asr_use_half,
+            use_half=use_half,
             beam_size=self.settings.asr_beam_size,
             return_timestamp=True,
         )
@@ -271,10 +346,12 @@ class ModelManager:
         self._prepare_imports()
         from fireredasr2s.fireredlid import FireRedLid, FireRedLidConfig
 
+        use_half = self.settings.lid_use_half and "lid" not in self._force_fp32_models
+
         config = self._build_model_config(
             FireRedLidConfig,
             use_gpu=self.cuda_available,
-            use_half=self.settings.lid_use_half,
+            use_half=use_half,
         )
         model_dir = self._meta["lid"].local_dir
         return FireRedLid.from_pretrained(str(model_dir), config=config)

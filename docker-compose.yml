@@ -15,6 +15,9 @@ services:
       VRAM_TTL: 300
       MODEL_DOWNLOAD_MODE: lazy
       USE_HALF: "false"
+      HALF_FALLBACK_FP32: "true"
+      ASR_HALF_FALLBACK_FP32: "true"
+      LID_HALF_FALLBACK_FP32: "true"
       API_KEY: change_me_strong_key
       API_KEY_HEADER: X-API-Key
       LOG_LEVEL: info

@@ -83,6 +83,12 @@ async def _startup() -> None:
         settings.lid_use_half,
         settings.punc_use_half,
     )
+    logger.info(
+        "FP16 fallback: global=%s, asr=%s, lid=%s",
+        settings.half_fallback_fp32,
+        settings.asr_half_fallback_fp32,
+        settings.lid_half_fallback_fp32,
+    )
     if settings.api_key_enabled:
         logger.info("API key auth enabled. header=%s", settings.api_key_header)
     else:

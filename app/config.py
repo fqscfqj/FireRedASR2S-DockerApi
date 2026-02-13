@@ -25,6 +25,13 @@ class Settings:
     asr_use_half: bool = _as_bool(os.getenv("ASR_USE_HALF", os.getenv("USE_HALF")), default=False)
     vad_use_half: bool = _as_bool(os.getenv("VAD_USE_HALF", os.getenv("USE_HALF")), default=False)
     lid_use_half: bool = _as_bool(os.getenv("LID_USE_HALF", os.getenv("USE_HALF")), default=False)
+    half_fallback_fp32: bool = _as_bool(os.getenv("HALF_FALLBACK_FP32"), default=True)
+    asr_half_fallback_fp32: bool = _as_bool(
+        os.getenv("ASR_HALF_FALLBACK_FP32", os.getenv("HALF_FALLBACK_FP32")), default=True
+    )
+    lid_half_fallback_fp32: bool = _as_bool(
+        os.getenv("LID_HALF_FALLBACK_FP32", os.getenv("HALF_FALLBACK_FP32")), default=True
+    )
     punc_use_half: bool = _as_bool(os.getenv("PUNC_USE_HALF", os.getenv("USE_HALF")), default=False)
     asr_beam_size: int = int(os.getenv("ASR_BEAM_SIZE", "3"))
     asr_batch_size: int = int(os.getenv("ASR_BATCH_SIZE", "1"))

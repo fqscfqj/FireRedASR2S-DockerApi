@@ -35,9 +35,12 @@ docker-compose.yml
 - `FIRERED_REPO_DIR`：FireRedASR2S 源码目录，默认 `/opt/FireRedASR2S`
 - `ASR_TYPE`：`aed` 或 `llm`，默认 `aed`
 - `USE_HALF`：全局半精度开关（FP16），默认 `false`
+- `HALF_FALLBACK_FP32`：全局 FP16 异常自动降级到 FP32 的开关，默认 `true`
 - `ASR_USE_HALF`：ASR 半精度开关，默认继承 `USE_HALF`
+- `ASR_HALF_FALLBACK_FP32`：ASR 在 FP16 推理异常时，自动降级到 FP32 并重试一次，默认继承 `HALF_FALLBACK_FP32`
 - `VAD_USE_HALF`：VAD 半精度开关，默认继承 `USE_HALF`
 - `LID_USE_HALF`：LID 半精度开关，默认继承 `USE_HALF`
+- `LID_HALF_FALLBACK_FP32`：LID 在 FP16 推理触发上游断言时，自动降级到 FP32 并重试一次，默认继承 `HALF_FALLBACK_FP32`
 - `PUNC_USE_HALF`：Punc 半精度开关，默认继承 `USE_HALF`
 - `PROCESS_ALL_FILTER_SCRIPT_MISMATCH`：`/v1/process_all`按LID过滤“语言脚本不匹配”字符（如英文段误识别汉字），默认 `true`
 - `PROCESS_ALL_FILTER_MIN_CONFIDENCE`：启用上述过滤时的最小LID置信度，默认 `0.80`
@@ -47,6 +50,7 @@ docker-compose.yml
 ### 显存优化建议
 - 首选 `MODEL_DOWNLOAD_MODE=lazy` + `VRAM_TTL=300`（已默认开启）
 - GPU 显存紧张时，设置 `USE_HALF=true`；如需细粒度控制，再单独设置 `*_USE_HALF`
+- 若 FP16 触发数值/断言异常，服务会按模型自动切换到 FP32 并重试一次（ASR/LID），避免接口因半精度不稳定而失败
 - 某些上游模型配置类可能不支持 `use_half` 参数，服务会自动跳过该参数并继续加载
 
 ## 本地运行（Docker）
