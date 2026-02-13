@@ -1,4 +1,4 @@
-name: build-image
+name: build-image-push
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       image_tag:
         description: "Image tag to push"
         required: true
-        default: "manual-latest"
+        default: "latest"
 
 jobs:
   docker:
